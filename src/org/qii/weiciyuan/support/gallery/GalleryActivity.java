@@ -32,6 +32,7 @@ import org.qii.weiciyuan.support.imageutility.ImageUtility;
 import org.qii.weiciyuan.support.lib.CircleProgressView;
 import org.qii.weiciyuan.support.lib.MyAsyncTask;
 import org.qii.weiciyuan.support.settinghelper.SettingUtility;
+import org.qii.weiciyuan.support.utils.GlobalContext;
 import org.qii.weiciyuan.support.utils.SmileyPickerUtility;
 import org.qii.weiciyuan.support.utils.Utility;
 import uk.co.senab.photoview.PhotoView;
@@ -69,6 +70,8 @@ public class GalleryActivity extends Activity {
 
     private ImageView animationView;
 
+    private View currentViewPositionLayout;
+
     private Rect rect;
 
     public void onCreate(Bundle savedInstanceState) {
@@ -76,6 +79,7 @@ public class GalleryActivity extends Activity {
         setContentView(R.layout.galleryactivity_layout);
 
         animationView = (ImageView) findViewById(R.id.animation);
+        currentViewPositionLayout = findViewById(R.id.position_layout);
 
         position = (TextView) findViewById(R.id.position);
         TextView sum = (TextView) findViewById(R.id.sum);
@@ -142,6 +146,7 @@ public class GalleryActivity extends Activity {
 
 
     private void animateClose(PhotoView imageView) {
+        currentViewPositionLayout.setVisibility(View.INVISIBLE);
         animationView.setImageDrawable(imageView.getAttacher().getImageView().getDrawable());
 
         pager.setVisibility(View.INVISIBLE);
@@ -468,15 +473,28 @@ public class GalleryActivity extends Activity {
             readLarge(large, url, bitmapPath);
             return;
         }
+
+        //ImageView already have bitmap, ignore it
+        if (imageView.getDrawable() != null)
+            return;
+
         new MyAsyncTask<Void, Bitmap, Bitmap>() {
 
+            //todo
+            //when I finish new ImageView in the future, I will refactor these code....
             @Override
             protected Bitmap doInBackground(Void... params) {
                 Bitmap bitmap = null;
                 try {
                     bitmap = ImageUtility.decodeBitmapFromSDCard(bitmapPath, IMAGEVIEW_SOFT_LAYER_MAX_WIDTH, IMAGEVIEW_SOFT_LAYER_MAX_HEIGHT);
                 } catch (OutOfMemoryError ignored) {
+                    GlobalContext.getInstance().getBitmapCache().evictAll();
+                    try {
+                        bitmap = ImageUtility.decodeBitmapFromSDCard(bitmapPath, IMAGEVIEW_SOFT_LAYER_MAX_WIDTH, IMAGEVIEW_SOFT_LAYER_MAX_HEIGHT);
+                    } catch (OutOfMemoryError ignoredToo) {
 
+
+                    }
                 }
 
                 return bitmap;
@@ -485,6 +503,10 @@ public class GalleryActivity extends Activity {
             @Override
             protected void onPostExecute(Bitmap bitmap) {
                 super.onPostExecute(bitmap);
+
+                if (imageView.getDrawable() != null)
+                    return;
+
                 if (bitmap != null) {
                     imageView.setVisibility(View.VISIBLE);
                     imageView.setImageBitmap(bitmap);
@@ -622,7 +644,8 @@ public class GalleryActivity extends Activity {
                     mPressed = false;
                     break;
                 case MotionEvent.ACTION_CANCEL:
-                    mPressed = false;
+                    mClose = false;
+
                     break;
                 case MotionEvent.ACTION_MOVE:
                     float x = event.getRawX();
