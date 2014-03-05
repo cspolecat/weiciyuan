@@ -2,12 +2,12 @@ package org.qii.weiciyuan.othercomponent.unreadnotification;
 
 import org.qii.weiciyuan.R;
 import org.qii.weiciyuan.bean.AccountBean;
+import org.qii.weiciyuan.bean.MessageBean;
 import org.qii.weiciyuan.bean.MessageListBean;
 import org.qii.weiciyuan.bean.UnreadBean;
 import org.qii.weiciyuan.bean.android.UnreadTabIndex;
-import org.qii.weiciyuan.dao.unread.ClearUnreadDao;
-import org.qii.weiciyuan.support.error.WeiboException;
-import org.qii.weiciyuan.support.settinghelper.SettingUtility;
+import org.qii.weiciyuan.support.database.NotificationDBTask;
+import org.qii.weiciyuan.support.lib.RecordOperationAppBroadcastReceiver;
 import org.qii.weiciyuan.support.utils.BundleArgsConstants;
 import org.qii.weiciyuan.support.utils.GlobalContext;
 import org.qii.weiciyuan.support.utils.Utility;
@@ -16,10 +16,12 @@ import org.qii.weiciyuan.ui.send.WriteCommentActivity;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+
+import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * User: qii
@@ -39,7 +41,9 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
 
     private String ticker;
 
-    private static BroadcastReceiver clearNotificationEventReceiver;
+    private static HashMap<String, RecordOperationAppBroadcastReceiver>
+            clearNotificationEventReceiver
+            = new HashMap<String, RecordOperationAppBroadcastReceiver>();
 
 
     @Override
@@ -63,8 +67,14 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
 
     private void buildNotification() {
 
-        int count = (data.getSize() >= Integer.valueOf(SettingUtility.getMsgCount()) ? unreadBean
-                .getMention_status() : data.getSize());
+//        int count = (data.getSize() >= Integer.valueOf(SettingUtility.getMsgCount()) ? unreadBean
+//                .getMention_status() : data.getSize());
+
+        int count = Math.min(unreadBean.getMention_status(), data.getSize());
+
+        if (count == 0) {
+            return;
+        }
 
         Notification.Builder builder = new Notification.Builder(getBaseContext())
                 .setTicker(ticker)
@@ -78,33 +88,45 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
                 String.format(GlobalContext.getInstance().getString(R.string.new_mentions_weibo),
                         String.valueOf(count)));
 
-        if (data.getSize() > 1) {
+        if (count > 1) {
             builder.setNumber(count);
         }
 
-        if (clearNotificationEventReceiver != null) {
+        if (clearNotificationEventReceiver.get(accountBean.getUid()) != null) {
             Utility.unregisterReceiverIgnoredReceiverNotRegisteredException(
-                    GlobalContext.getInstance(), clearNotificationEventReceiver);
-            JBMentionsWeiboNotificationServiceHelper.clearNotificationEventReceiver = null;
+                    GlobalContext.getInstance(),
+                    clearNotificationEventReceiver.get(accountBean.getUid()));
+            JBMentionsWeiboNotificationServiceHelper.clearNotificationEventReceiver
+                    .put(accountBean.getUid(), null);
         }
 
-        clearNotificationEventReceiver = new BroadcastReceiver() {
+        RecordOperationAppBroadcastReceiver receiver = new RecordOperationAppBroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
                         try {
-                            new ClearUnreadDao(accountBean.getAccess_token())
-                                    .clearMentionStatusUnread(unreadBean, accountBean.getUid());
+//                            new ClearUnreadDao(accountBean.getAccess_token())
+//                                    .clearMentionStatusUnread(unreadBean, accountBean.getUid());
 
-                        } catch (WeiboException ignored) {
+                            ArrayList<String> ids = new ArrayList<String>();
+
+                            for (MessageBean msg : data.getItemList()) {
+                                ids.add(msg.getId());
+                            }
+
+                            NotificationDBTask.addUnreadNotification(accountBean.getUid(), ids,
+                                    NotificationDBTask.UnreadDBType.mentionsWeibo);
+
+//                        } catch (WeiboException ignored) {
 
                         } finally {
                             Utility.unregisterReceiverIgnoredReceiverNotRegisteredException(
-                                    GlobalContext.getInstance(), clearNotificationEventReceiver);
+                                    GlobalContext.getInstance(),
+                                    clearNotificationEventReceiver.get(accountBean.getUid()));
                             JBMentionsWeiboNotificationServiceHelper.clearNotificationEventReceiver
-                                    = null;
+                                    .put(accountBean.getUid(), null);
                         }
 
                     }
@@ -112,9 +134,13 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
             }
         };
 
+        clearNotificationEventReceiver.put(accountBean.getUid(), receiver);
+
         IntentFilter intentFilter = new IntentFilter(RESET_UNREAD_MENTIONS_WEIBO_ACTION);
 
-        GlobalContext.getInstance().registerReceiver(clearNotificationEventReceiver, intentFilter);
+        GlobalContext.getInstance()
+                .registerReceiver(clearNotificationEventReceiver.get(accountBean.getUid()),
+                        intentFilter);
 
         Intent broadcastIntent = new Intent(RESET_UNREAD_MENTIONS_WEIBO_ACTION);
 
@@ -132,7 +158,7 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
         builder.addAction(R.drawable.comment_light,
                 getApplicationContext().getString(R.string.comments), pendingIntent);
 
-        if (data.getSize() > 1) {
+        if (count > 1) {
             Intent nextIntent = new Intent(JBMentionsWeiboNotificationServiceHelper.this,
                     JBMentionsWeiboNotificationServiceHelper.class);
             nextIntent.putExtra(NotificationServiceHelper.ACCOUNT_ARG, accountBean);
@@ -145,7 +171,7 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
             String actionName;
             int nextIndex;
             int actionDrawable;
-            if (currentIndex < data.getSize() - 1) {
+            if (currentIndex < count - 1) {
                 nextIndex = currentIndex + 1;
                 actionName = getString(R.string.next_message);
                 actionDrawable = R.drawable.notification_action_next;
@@ -175,9 +201,8 @@ public class JBMentionsWeiboNotificationServiceHelper extends NotificationServic
         }
         bigTextStyle.bigText(data.getItem(currentIndex).getText());
         String summaryText;
-        if (data.getSize() > 1) {
-            summaryText = accountBean.getUsernick() + "(" + (currentIndex + 1) + "/" + data
-                    .getSize() + ")";
+        if (count > 1) {
+            summaryText = accountBean.getUsernick() + "(" + (currentIndex + 1) + "/" + count + ")";
         } else {
             summaryText = accountBean.getUsernick();
         }

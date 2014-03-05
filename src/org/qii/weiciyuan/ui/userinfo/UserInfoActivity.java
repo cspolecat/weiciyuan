@@ -13,13 +13,13 @@ import org.qii.weiciyuan.support.debug.AppLogger;
 import org.qii.weiciyuan.support.error.ErrorCode;
 import org.qii.weiciyuan.support.error.WeiboException;
 import org.qii.weiciyuan.support.lib.MyAsyncTask;
+import org.qii.weiciyuan.support.utils.AnimationUtility;
 import org.qii.weiciyuan.support.utils.GlobalContext;
 import org.qii.weiciyuan.support.utils.ThemeUtility;
 import org.qii.weiciyuan.support.utils.Utility;
 import org.qii.weiciyuan.ui.common.CommonErrorDialogFragment;
 import org.qii.weiciyuan.ui.common.CommonProgressDialogFragment;
 import org.qii.weiciyuan.ui.interfaces.AbstractAppActivity;
-import org.qii.weiciyuan.ui.interfaces.IUserInfo;
 import org.qii.weiciyuan.ui.loader.AbstractAsyncNetRequestTaskLoader;
 import org.qii.weiciyuan.ui.main.MainTimeLineActivity;
 import org.qii.weiciyuan.ui.send.WriteWeiboActivity;
@@ -46,7 +46,7 @@ import java.util.List;
  * User: Jiang Qi
  * Date: 12-8-14
  */
-public class UserInfoActivity extends AbstractAppActivity implements IUserInfo {
+public class UserInfoActivity extends AbstractAppActivity {
 
     private String token;
 
@@ -66,7 +66,6 @@ public class UserInfoActivity extends AbstractAppActivity implements IUserInfo {
         return token;
     }
 
-    @Override
     public UserBean getUser() {
         return bean;
     }
@@ -120,6 +119,8 @@ public class UserInfoActivity extends AbstractAppActivity implements IUserInfo {
             findViewById(android.R.id.content).setBackgroundDrawable(
                     ThemeUtility.getDrawable(android.R.attr.windowBackground));
         } else {
+            findViewById(android.R.id.content).setBackgroundDrawable(
+                    ThemeUtility.getDrawable(android.R.attr.windowBackground));
             buildContent();
         }
 
@@ -186,15 +187,20 @@ public class UserInfoActivity extends AbstractAppActivity implements IUserInfo {
             @Override
             public void run() {
                 if (getSupportFragmentManager()
-                        .findFragmentByTag(NewUserInfoFragment.class.getName()) == null) {
+                        .findFragmentByTag(UserInfoFragment.class.getName()) == null) {
+                    UserInfoFragment userInfoFragment = UserInfoFragment
+                            .newInstance(getUser(),
+                                    getToken());
                     getSupportFragmentManager().beginTransaction()
                             .replace(android.R.id.content,
-                                    new NewUserInfoFragment(getUser(), getToken()),
-                                    NewUserInfoFragment.class.getName())
+                                    userInfoFragment,
+                                    UserInfoFragment.class.getName())
                             .commit();
                     getSupportFragmentManager().executePendingTransactions();
 
-                    findViewById(android.R.id.content).setBackgroundDrawable(null);
+                    AnimationUtility
+                            .translateFragmentY(userInfoFragment, -400, 0, userInfoFragment);
+
                 }
             }
         });
@@ -310,9 +316,9 @@ public class UserInfoActivity extends AbstractAppActivity implements IUserInfo {
     }
 
 
-    private NewUserInfoFragment getInfoFragment() {
-        return ((NewUserInfoFragment) getSupportFragmentManager().findFragmentByTag(
-                NewUserInfoFragment.class.getName()));
+    private UserInfoFragment getInfoFragment() {
+        return ((UserInfoFragment) getSupportFragmentManager().findFragmentByTag(
+                UserInfoFragment.class.getName()));
     }
 
     private void manageGroup() {
